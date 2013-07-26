@@ -12,10 +12,15 @@ SOUND_ROOT = '/home/pi/FLG_sounds'
 INHALE_SOUNDS = glob.glob( os.path.join(SOUND_ROOT, 'normalized/inhale_[0-9]*.wav' ) )
 EXHALE_SOUNDS = glob.glob( os.path.join(SOUND_ROOT, 'normalized/exhale_[0-9]*.wav' ) )
 MIN_BREATH_SPEED = 0.6
-MAX_BREATH_SPEED = 2.0
+MAX_BREATH_SPEED = 2.5
+GROWTH_LIMIT=0.0003
+DECAY_RATE=1.0
 
 IR_PINS = [0, 1]
-IR_EVENT_THRESHOLD = 0.05
+#IR_EVENT_THRESHOLD = 0.05
+IR_EVENT_THRESHOLD = 0.2
+
+FELT_PINS = [5]
 
 def median(mylist):
     sorts = sorted(mylist)
@@ -26,12 +31,14 @@ def median(mylist):
 
 def play_sound(filename, speed=1.0, vol=1.0, block=False):
     filename = os.path.join(SOUND_ROOT, filename)
-    assert os.path.exists(filename)
+    print "Playing %s" % filename
     out = open('/dev/null', 'w')
     #out = None
     p = subprocess.Popen(('play',filename, 'tempo', str(speed), 'vol', str(vol)), stdout=out, stderr=out)
+    #p = subprocess.Popen("sleep 1", stdout=out, stderr=out)
     if block:
         p.wait()
+    return p
 
 
 def readIR(analog_pin):
@@ -76,13 +83,15 @@ class Looper(threading.Thread):
         self.speed = speed
         self.vol = vol
         self.soundfile = soundfile
+        
 
     def run(self):
         while True:
             play_sound(self.soundfile, speed=self.speed, vol=self.vol, block=True)
+            time.sleep(0.10)
 
 class ActivityCounter(object):
-    def __init__(self, max_value=60, growth_limit=0.0003, decay_rate=1.0):
+    def __init__(self, max_value=60, growth_limit=GROWTH_LIMIT, decay_rate=DECAY_RATE):
         self.value = 0
         self.max_value = max_value
 
@@ -129,14 +138,28 @@ class IRSensor(object):
             self.value = readIR(self.pin)
         delta = self.value - self.prior_value
         if delta > IR_EVENT_THRESHOLD:
-            while delta > 0:
-                self.counter += 1
-                delta -= 0.01
-        #print "IR %d delta: %f" % (self.pin, self.value - self.prior_value)
+            self.counter += 1
+            print "IR %d delta: %f" % (self.pin, self.value - self.prior_value)
 
+class FeltSensor(object):
+    def __init__(self, pin):
+        self.pin = pin
+        self.value = 0
+        self.last_value = 0
+        self.sounds = glob.glob( os.path.join(SOUND_ROOT, 'ddt_stem_sounds/Stem*.wav') )
 
-def get_breath_speed(counter):
-    return 1.0
+    def update(self):
+        self.last_value = self.value
+        r = readIR(self.pin)
+        self.value = {True: 1, False:0}[r >= 0.9]
+        #print "Felt %d: %F" % (self.pin, self.value)
+        if self.last_value == 0 and self.value == 1:
+            self.trigger_sound()
+
+    def trigger_sound(self):
+        soundfile = random.choice(self.sounds)
+        play_sound(soundfile, vol="5dB" )
+
 
 
 if __name__ == '__main__':
@@ -156,7 +179,7 @@ if __name__ == '__main__':
         it = util.Iterator(board)
         it.daemon = True
         it.start()
-        for pin in IR_PINS:
+        for pin in IR_PINS + FELT_PINS:
             board.analog[pin].enable_reporting()
 
     breathing_sounds = gen_breathing_sounds()
@@ -170,6 +193,7 @@ if __name__ == '__main__':
     
     counter = ActivityCounter()
     ir_sensors = [ IRSensor(pin, counter) for pin in IR_PINS  ]
+    felt_sensors = [ FeltSensor(pin) for pin in FELT_PINS ]
     
     speed = 0.8
     while True:
@@ -178,4 +202,8 @@ if __name__ == '__main__':
         counter.update()
         #print("Speed: %f" % Breather.counter_to_speed(counter))
         speedqueue.put(Breather.counter_to_speed(counter))
-        time.sleep(0.05)
+
+        for felt in felt_sensors:
+            felt.update()
+        
+        time.sleep(0.10)
