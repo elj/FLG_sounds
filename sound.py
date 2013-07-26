@@ -11,6 +11,8 @@ from Queue import Queue
 SOUND_ROOT = '/home/pi/FLG_sounds'
 INHALE_SOUNDS = glob.glob( os.path.join(SOUND_ROOT, 'normalized/inhale_[0-9]*.wav' ) )
 EXHALE_SOUNDS = glob.glob( os.path.join(SOUND_ROOT, 'normalized/exhale_[0-9]*.wav' ) )
+MIN_BREATH_SPEED = 0.6
+MAX_BREATH_SPEED = 2.0
 
 IR_PINS = [0, 1]
 IR_EVENT_THRESHOLD = 0.05
@@ -58,10 +60,14 @@ class Breather(threading.Thread):
             while not self.queue.empty():
                 self.speed = self.queue.get()
             print "Breathing speed: %f" % self.speed
-            play_sound(breathing_sounds.next(), speed=speed, block=True)
+            play_sound(breathing_sounds.next(), speed=self.speed, block=True)
+
+    @classmethod
+    def counter_to_speed(klass, counter):
+        return float(counter.value) / float(counter.max_value) * (MAX_BREATH_SPEED - MIN_BREATH_SPEED) + MIN_BREATH_SPEED
 
 class ActivityCounter(object):
-    def __init__(self, max_value=60, growth_limit=0.001, decay_rate=1.0):
+    def __init__(self, max_value=60, growth_limit=0.0003, decay_rate=1.0):
         self.value = 0
         self.max_value = max_value
         self.decay_rate = decay_rate # in seconds
@@ -135,8 +141,8 @@ if __name__ == '__main__':
     breathing_sounds = gen_breathing_sounds()
 
     speedqueue = Queue()
-    #breather = Breather(speedqueue)
-    #breather.start()
+    breather = Breather(speedqueue)
+    breather.start()
     counter = ActivityCounter()
 
     ir_sensors = [ IRSensor(pin, counter) for pin in IR_PINS  ]
@@ -146,5 +152,6 @@ if __name__ == '__main__':
         for irs in ir_sensors:
             irs.update()
         counter.update()
-        speedqueue.put(get_breath_speed(counter))
+        print("Speed: %f" % Breather.counter_to_speed(counter))
+        speedqueue.put(Breather.counter_to_speed(counter))
         time.sleep(0.05)
