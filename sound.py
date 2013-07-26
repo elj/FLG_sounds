@@ -134,6 +134,7 @@ if __name__ == '__main__':
             acm_no += 1
             continue
     it = util.Iterator(board)
+    it.daemon = True
     it.start()
     for pin in IR_PINS:
         board.analog[pin].enable_reporting()
