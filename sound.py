@@ -24,12 +24,12 @@ def median(mylist):
         return (sorts[length / 2] + sorts[length / 2 - 1]) / 2.0
     return sorts[length / 2]
 
-def play_sound(filename, speed=1.0, block=False):
+def play_sound(filename, speed=1.0, vol=1.0, block=False):
     filename = os.path.join(SOUND_ROOT, filename)
     assert os.path.exists(filename)
     out = open('/dev/null', 'w')
     #out = None
-    p = subprocess.Popen(('play',filename, 'tempo', str(speed)), stdout=out, stderr=out)
+    p = subprocess.Popen(('play',filename, 'tempo', str(speed), 'vol', str(vol)), stdout=out, stderr=out)
     if block:
         p.wait()
 
@@ -70,15 +70,16 @@ class Breather(threading.Thread):
         return float(counter.value) / float(counter.max_value) * (MAX_BREATH_SPEED - MIN_BREATH_SPEED) + MIN_BREATH_SPEED
 
 class Looper(threading.Thread):
-    def __init__(self, soundfile, speed=1.0, *args, **kwargs):
+    def __init__(self, soundfile, speed=1.0, vol=1.0, *args, **kwargs):
         super(Looper, self).__init__(*args, **kwargs)
         self.daemon = True
         self.speed = speed
+        self.vol = vol
         self.soundfile = soundfile
 
     def run(self):
         while True:
-            play_sound(self.soundfile, speed=self.speed, block=True)
+            play_sound(self.soundfile, speed=self.speed, vol=self.vol, block=True)
 
 class ActivityCounter(object):
     def __init__(self, max_value=60, growth_limit=0.0003, decay_rate=1.0):
@@ -96,7 +97,7 @@ class ActivityCounter(object):
             if self.value > 0:
                 self.value -= 1
             self.last_decay_time = time.time()
-        print "Counter: %d" % int(self)
+        #print "Counter: %d" % int(self)
         sys.stdout.flush()
 
     def __iadd__(self, n):
@@ -161,7 +162,7 @@ if __name__ == '__main__':
     breather = Breather(speedqueue)
     breather.start()
 
-    scraper = Looper('normalized/scrapes_loop.wav')
+    scraper = Looper('normalized/scrapes_loop.wav', vol='-3dB')
     scraper.start()
     
     counter = ActivityCounter()
