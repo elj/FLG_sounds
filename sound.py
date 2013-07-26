@@ -97,7 +97,7 @@ class ActivityCounter(object):
             if self.value > 0:
                 self.value -= 1
             self.last_decay_time = time.time()
-        #print "Counter: %d" % int(self)
+        print "Counter: %d" % int(self)
         sys.stdout.flush()
 
     def __iadd__(self, n):
@@ -125,7 +125,8 @@ class IRSensor(object):
 
     def update(self):
         self.prior_value = self.value
-        self.value = readIR(self.pin)
+        if board: # if no arduino is hooked up, skip this
+            self.value = readIR(self.pin)
         delta = self.value - self.prior_value
         if delta > IR_EVENT_THRESHOLD:
             while delta > 0:
@@ -142,7 +143,8 @@ if __name__ == '__main__':
 
     # Setup pyfirmata for arduino reads
     acm_no = 0
-    while acm_no < 40:
+    board = None
+    while acm_no < 10:
         try:
             board = Arduino('/dev/ttyACM%d' % acm_no)
             print "Found arduino on /dev/tty/ACM%d" % acm_no
@@ -150,11 +152,12 @@ if __name__ == '__main__':
         except:
             acm_no += 1
             continue
-    it = util.Iterator(board)
-    it.daemon = True
-    it.start()
-    for pin in IR_PINS:
-        board.analog[pin].enable_reporting()
+    if board:
+        it = util.Iterator(board)
+        it.daemon = True
+        it.start()
+        for pin in IR_PINS:
+            board.analog[pin].enable_reporting()
 
     breathing_sounds = gen_breathing_sounds()
 
